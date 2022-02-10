@@ -920,12 +920,12 @@ local getTotalCupidsAndHearts = function(_totalPlayers, _totalCupids)
 end
 
 local setDamageByPoisonOrDestroy = function(totalPlayers, totalCupids, totalCollectibles)
-	local damageByHeartPoison = math_max(10, 35 - totalPlayers)
+	local damageByHeartPoison = math_max(6, 50 - totalPlayers)
 	regularMouse.minPoisonDamage = damageByHeartPoison * 0.8
 	regularMouse.maxPoisonDamage = damageByHeartPoison * 1.2
 
 	local damageByDestroyedHeart = math_max(15,
-		30 - ((totalCollectibles / module.nHeartsPerCupid) * totalCupids))
+		32 - ((totalCollectibles / module.nHeartsPerCupid) * totalCupids))
 	cupidHeart.minCupidDamage = damageByDestroyedHeart * 0.8
 	cupidHeart.maxCupidDamage = damageByDestroyedHeart * 1.2
 end
