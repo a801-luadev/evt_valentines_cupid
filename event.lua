@@ -784,6 +784,14 @@ local table_keys = function(t)
 	return tbl
 end
 
+local table_shuffle = function(tbl)
+	local rand
+	for i = #tbl, 1, -1 do
+		rand = math_random(i)
+		tbl[i], tbl[rand] = tbl[rand], tbl[i]
+	end
+end
+
 local math_pythagoras = function(x, y, cx, cy, cr)
 	x = x - cx
 	x = x * x
@@ -965,6 +973,7 @@ local setClasses = function()
 
 	-- Only alive players
 	local cachedPlayers = table_keys(playerCache)
+	table_shuffle(cachedPlayers)
 	local totalCupids, totalHearts = getTotalCupidsAndHearts(#cachedPlayers)
 
 	local tmpCupid, tmpIndex
