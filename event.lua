@@ -34,7 +34,7 @@ local module = {
 	totalArrowHitsForReward = 25,
 
 	minPlayers = 5,
-	maxPlayers = 40,
+	maxPlayers = 60,
 
 	time = 2 * 60,
 	maps = {
@@ -793,6 +793,12 @@ local math_pythagoras = function(x, y, cx, cy, cr)
 	return x + y < cr
 end
 
+local isValidPlayer = function(playerName)
+	playerName = tfm.get.room.playerList[playerName]
+	return playerName.id > 0 -- Is not souris
+		and (time() - playerName.registrationDate) >= (3 * 60 * 60 * 24 * 1000) -- Player 3+ days
+end
+
 --[[ Tables & Enums ]]--
 local regularMouse, linkedMouse, cupid, cupidHeart = { }, { }, { }, { }
 
@@ -913,6 +919,17 @@ local getTotalCupidsAndHearts = function(_totalPlayers, _totalCupids)
 	return totalCupids, totalHearts
 end
 
+local setDamageByPoisonOrDestroy = function(totalPlayers, totalCupids, totalCollectibles)
+	local damageByHeartPoison = math_max(10, 35 - totalPlayers)
+	regularMouse.minPoisonDamage = damageByHeartPoison * 0.8
+	regularMouse.maxPoisonDamage = damageByHeartPoison * 1.2
+
+	local damageByDestroyedHeart = math_max(15,
+		30 - ((totalCollectibles / module.nHeartsPerCupid) * totalCupids))
+	cupidHeart.minCupidDamage = damageByDestroyedHeart * 0.8
+	cupidHeart.maxCupidDamage = damageByDestroyedHeart * 1.2
+end
+
 local displayPopup = function()
 	local tmpClass
 	for playerName, cache in next, playerCache do
@@ -952,15 +969,19 @@ local setClasses = function()
 
 	local tmpCupid, tmpIndex
 	for c = 1, totalCupids do
-		tmpCupid, tmpIndex = table_random(cachedPlayers)
+		repeat
+			tmpCupid, tmpIndex = table_random(cachedPlayers)
+		until isValidPlayer(tmpCupid)
 		table.remove(cachedPlayers, tmpIndex)
 		playerCache[tmpCupid].class = cupid.new(tmpCupid)
 	end
 
-	for p = 1, #cachedPlayers do
+	local totalPlayers = #cachedPlayers
+	for p = 1, totalPlayers do
 		playerCache[cachedPlayers[p]].class = regularMouse.new(cachedPlayers[p])
 	end
 
+	setDamageByPoisonOrDestroy(totalPlayers, totalCupids, regularMouse.collectibles._count)
 	cupidHeart.display(totalHearts)
 
 	-- Display popups
@@ -992,6 +1013,9 @@ do
 	regularMouse.collectibles = {
 		_count = 0
 	}
+
+	regularMouse.minPoisonDamage = 0
+	regularMouse.maxPoisonDamage = 0
 
 	regularMouse.new = function(playerName)
 		local bonusIDs = { }
@@ -1027,6 +1051,9 @@ do
 		if collectedSolo == 3 then
 			tfm.exec.giveConsumables(self.playerName, consumables.fur, 5)
 		end
+
+		tfm.exec.chatMessage(str_format("<V>[•] <T>%s %s/%s", translation.item.regularMouse,
+			collectedSolo, module.totalPotionsForReward), self.playerName)
 	end
 
 	regularMouse.keyboard = function(self, playerName, key, x, y, isDown)
@@ -1045,7 +1072,8 @@ do
 
 				self.collected = false
 
-				destroyedHeart = tmpHeart:damage(math_random(10, 30), heart)
+				destroyedHeart = tmpHeart:damage(
+					math_random(regularMouse.minPoisonDamage, regularMouse.maxPoisonDamage), heart)
 				if destroyedHeart then
 					tfm.exec.giveConsumables(playerName, consumables.fur, 2)
 				end
@@ -1134,6 +1162,9 @@ do
 		if collectedLinked == 1 then
 			tfm.exec.giveConsumables(playerName, consumables.fur, 5)
 		end
+
+		tfm.exec.chatMessage(str_format("<V>[•] <VI>%s %s/%s", translation.item.linkedMouse,
+			collectedLinked, module.totalLoveLettersForReward), playerName)
 	end
 end
 
@@ -1178,6 +1209,8 @@ do
 
 								tmpCupid.hitPlayer = nil
 							end
+
+							tfm.exec.displayParticle(5, data.x, data.y, nil, -2)
 
 							return
 						end
@@ -1287,6 +1320,9 @@ do
 		if totalLinkedMice == 1 then
 			tfm.exec.giveConsumables(self.playerName, consumables.fur, 5)
 		end
+
+		tfm.exec.chatMessage(str_format("<V>[•] <S>%s %s/%s", translation.item.cupid,
+			totalLinkedMice * 2, module.totalArrowHitsForReward * 2), self.playerName)
 	end
 
 	local removeArrow = function(self)
@@ -1341,6 +1377,9 @@ do
 	cupidHeart.list = {
 		_count = 0
 	}
+
+	cupidHeart.minCupidDamage = 0
+	cupidHeart.maxCupidDamage = 0
 
 	local totalStates = #images.cupidHeart
 	cupidHeart.new = function(x, y, originalIndex)
@@ -1437,7 +1476,8 @@ do
 				tmpCupid = playerCache[cupid.list[c]]
 
 				if tmpCupid and not tmpCupid.isDead then
-					tmpCupid.class:damage(math_random(18, 28))
+					tmpCupid.class:damage(
+						math_random(cupidHeart.minCupidDamage, cupidHeart.maxCupidDamage))
 				end
 			end
 
@@ -1449,6 +1489,8 @@ do
 					timer:start(cupidHeart.display, 1500 * h, 1, 1)
 				end
 			end
+
+			tfm.exec.displayParticle(12, self.x, self.y)
 
 			return true
 		else
@@ -1544,6 +1586,7 @@ end
 
 eventNewPlayer = function(playerName)
 	loadAllImages(playerName)
+	cupid.display()
 end
 
 eventMouse = function(playerName, x, y)
@@ -1626,7 +1669,6 @@ eventPlayerLeft = function(playerName)
 end
 
 --[[ Init ]]--
-tfm.exec.disableAfkDeath()
 tfm.exec.disableAutoShaman()
 tfm.exec.disableAutoNewGame()
 tfm.exec.disableAutoTimeLeft()
