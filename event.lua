@@ -31,7 +31,7 @@ local module = {
 
 	totalPotionsForReward = 50,
 	totalLoveLettersForReward = 25,
-	totalArrowHitsForReward = 25,
+	totalLinkedSoulsForReward = 25,
 
 	minPlayers = 5,
 	maxPlayers = 60,
@@ -834,7 +834,17 @@ images = {
 }
 
 consumables = {
-	fur = 666
+	fur = 666,
+	any = {
+		2256, 2513, 2514, -- Brushes
+		3, -- Firework
+		2241, -- Postcards
+		2378, -- leaves
+		2234, -- Mic
+		2346, -- Petals
+		2232, -- Rainbow
+		2250, 20 -- Throwables
+	}
 }
 
 local interface = {
@@ -920,7 +930,8 @@ end
 
 local getTotalCupidsAndHearts = function(_totalPlayers, _totalCupids)
 	local totalCupids = math_max(1, _totalCupids or math_min(#cupidHeart.collectibles - 1,
-		math_max(1, math_floor((_totalPlayers / module.oneCupidPerNPlayers) + 0.5))))
+		math_max(1, math_ceil(_totalPlayers / module.oneCupidPerNPlayers))))
+		--math_max(1, math_floor((_totalPlayers / module.oneCupidPerNPlayers) + 0.5))))
 
 	local totalHearts = math_min(totalCupids * module.nHeartsPerCupid, #cupidHeart.collectibles - 1)
 
@@ -928,7 +939,7 @@ local getTotalCupidsAndHearts = function(_totalPlayers, _totalCupids)
 end
 
 local setDamageByPoisonOrDestroy = function(totalPlayers, totalCupids, totalCollectibles)
-	local damageByHeartPoison = math_max(6, 50 - totalPlayers)
+	local damageByHeartPoison = math_max(6, 45 - totalPlayers)
 	regularMouse.minPoisonDamage = damageByHeartPoison * 0.8
 	regularMouse.maxPoisonDamage = damageByHeartPoison * 1.2
 
@@ -957,6 +968,93 @@ local removePopup = function()
 	end
 end
 
+local validateReward = function(reward, expectedValue, currentValue, playerName)
+	local rewards = playerData:get(playerName, "rewards")
+	if band(reward[2], rewards) > 0 then return end
+
+	if expectedValue > currentValue then return end
+	system.giveEventGift(playerName, reward[1])
+
+	playerData
+		:set(playerName, "rewards", rewards + reward[2])
+		:save(playerName)
+
+	tfm.exec.chatMessage("<VI>" .. translation.credit, playerName)
+
+	tfm.exec.giveConsumables(playerName, consumables.fur, 5)
+	for _ = 1, 3 do
+		tfm.exec.giveConsumables(playerName, table_random(consumables.any), math_random(1, 3))
+	end
+end
+
+local selectCupids
+do
+	local selectRandomWithWeight
+	selectRandomWithWeight = function(weights, total)
+		local result, sum = math_random(total), 0
+
+		for k, v in next, weights do
+			sum = sum + v
+			if sum > result then
+				return k
+			end
+		end
+
+		return selectRandomWithWeight(weights, total)
+	end
+
+	local getPlayerStage = function(playerName)
+		local rewards = playerData:get(playerName, "rewards")
+
+		if band(module.reward.badge[2], rewards) > 0 then -- Already has the badge
+			return 1200
+		elseif band(module.reward.title.willbriemine[2]
+			+ module.reward.title.heartbreaker[2], rewards) > 0 then -- Has both titles
+
+			local totalLinkedMice = playerData:get(playerName, "linkedMice")
+			if totalLinkedMice >= module.totalLinkedSoulsForReward * 0.8 then -- miss .2 to complete
+				return 7500
+			end
+			return 5500
+		elseif band(module.reward.title.willbriemine[2], rewards) > 0
+			or band(module.reward.title.heartbreaker[2], rewards) > 0 then -- Has only one title
+			return 2800
+		else -- Doesn't have any title
+			return 2150
+		end
+	end
+
+	selectCupids = function(totalCupids)
+		local cachedPlayers = table_keys(playerCache)
+
+		local players, playerWeights = { }, { }
+
+		local totalWeight = 0
+		for playerName = 1, #cachedPlayers do
+			playerName = cachedPlayers[playerName]
+
+			if isValidPlayer(playerName) then
+				playerWeights[playerName] = getPlayerStage(playerName)
+				totalWeight = totalWeight + playerWeights[playerName]
+			end
+		end
+
+		local selectedPlayers = { }
+
+		local playerName
+		for t = 1, totalCupids do
+			playerName = selectRandomWithWeight(playerWeights, totalWeight)
+
+			selectedPlayers[playerName] = true
+
+			totalWeight = totalWeight - playerWeights[playerName]
+			playerWeights[playerName] = nil
+		end
+
+		return selectedPlayers
+	end
+end
+
 local setClasses = function()
 	-- Check if all data is loaded
 	local player, tmpPlayer = next(playerCache)
@@ -973,24 +1071,21 @@ local setClasses = function()
 
 	-- Only alive players
 	local cachedPlayers = table_keys(playerCache)
-	table_shuffle(cachedPlayers)
-	local totalCupids, totalHearts = getTotalCupidsAndHearts(#cachedPlayers)
-
-	local tmpCupid, tmpIndex
-	for c = 1, totalCupids do
-		repeat
-			tmpCupid, tmpIndex = table_random(cachedPlayers)
-		until isValidPlayer(tmpCupid)
-		table.remove(cachedPlayers, tmpIndex)
-		playerCache[tmpCupid].class = cupid.new(tmpCupid)
-	end
-
 	local totalPlayers = #cachedPlayers
-	for p = 1, totalPlayers do
-		playerCache[cachedPlayers[p]].class = regularMouse.new(cachedPlayers[p])
+
+	local totalCupids, totalHearts = getTotalCupidsAndHearts(totalPlayers)
+
+	local cupidPlayers = selectCupids(totalCupids)
+
+	for playerName = 1, totalPlayers do
+		playerName = cachedPlayers[playerName]
+
+		playerCache[playerName].class =
+			(cupidPlayers[playerName] and cupid.new or regularMouse.new)(playerName)
 	end
 
-	setDamageByPoisonOrDestroy(totalPlayers, totalCupids, regularMouse.collectibles._count)
+	setDamageByPoisonOrDestroy(totalPlayers -  totalCupids, totalCupids,
+		regularMouse.collectibles._count)
 	cupidHeart.display(totalHearts)
 
 	-- Display popups
@@ -998,20 +1093,10 @@ local setClasses = function()
 	timer:start(removePopup, module.removePopupAfterNSeconds, 1)
 end
 
-local validateReward = function(reward, expectedValue, currentValue, playerName)
-	local rewards = playerData:get(playerName, "rewards")
-	if band(reward[2], rewards) > 0 then return end
-
-	if expectedValue > currentValue then return end
-	system.giveEventGift(playerName, reward[1])
-
-	playerData
-		:set(playerName, "rewards", rewards + reward[2])
-		:save(playerName)
-
-	tfm.exec.chatMessage("<VI>" .. translation.credit, playerName)
-
-	tfm.exec.giveConsumables(playerName, consumables.fur, 5)
+local saveAll = function()
+	for playerName in next, playerCache do
+		playerData:save(playerName)
+	end
 end
 
 --[[ Classes ]]--
@@ -1084,7 +1169,9 @@ do
 				destroyedHeart = tmpHeart:damage(
 					math_random(regularMouse.minPoisonDamage, regularMouse.maxPoisonDamage), heart)
 				if destroyedHeart then
-					tfm.exec.giveConsumables(playerName, consumables.fur, 2)
+					tfm.exec.giveConsumables(playerName, consumables.fur, 1)
+					tfm.exec.giveConsumables(playerName, table_random(consumables.any),
+						math_random(1, 3))
 				end
 
 				self:poisonedHeart()
@@ -1150,6 +1237,8 @@ do
 		tfm.exec.chatMessage(str_format("<V>[•] <VI>%s %s/%s", translation.item.linkedMouse,
 			playerData:get(playerName, "collectedLinked"), module.totalLoveLettersForReward),
 			playerName)
+
+		tfm.exec.giveConsumables(playerName, table_random(consumables.any), math_random(2, 3))
 
 		return setmetatable({
 			playerName = playerName,
@@ -1238,13 +1327,14 @@ do
 		tfm.exec.chatMessage("<CH2><B>" .. translation.cupid.transform .. "</B>", playerName)
 		tfm.exec.chatMessage("<PS>" .. translation.guide.cupid, playerName)
 		tfm.exec.chatMessage(str_format("<V>[•] <S>%s %s/%s", translation.item.cupid,
-			playerData:get(playerName, "linkedMice") * 2, module.totalArrowHitsForReward * 2),
+			playerData:get(playerName, "linkedMice") * 2, module.totalLinkedSoulsForReward * 2),
 			playerName)
 
 		cupid.list[#cupid.list + 1] = playerName
 		cupid.display()
 
 		tfm.exec.giveConsumables(playerName, consumables.fur, 1)
+		tfm.exec.giveConsumables(playerName, table_random(consumables.any), math_random(2, 3))
 
 		local this = setmetatable({
 			playerName = playerName,
@@ -1317,7 +1407,7 @@ do
 		local totalLinkedMice = playerData:get(self.playerName, "linkedMice") + 1
 		playerData:set(self.playerName, "linkedMice", totalLinkedMice)
 
-		validateReward(module.reward.badge, module.totalArrowHitsForReward, totalLinkedMice,
+		validateReward(module.reward.badge, module.totalLinkedSoulsForReward, totalLinkedMice,
 			self.playerName)
 
 		self.linkedMice[#self.linkedMice + 1] = mouse1
@@ -1331,7 +1421,7 @@ do
 		end
 
 		tfm.exec.chatMessage(str_format("<V>[•] <S>%s %s/%s", translation.item.cupid,
-			totalLinkedMice * 2, module.totalArrowHitsForReward * 2), self.playerName)
+			totalLinkedMice * 2, module.totalLinkedSoulsForReward * 2), self.playerName)
 	end
 
 	local removeArrow = function(self)
@@ -1634,9 +1724,7 @@ local eventRoundEnded = function()
 	hasTriggeredRoundEnd = true
 	tfm.exec.setGameTime(5)
 
-	for playerName in next, playerCache do
-		eventPlayerLeft(playerName)
-	end
+	saveAll()
 
 	tfm.exec.disableAutoNewGame(false)
 end
@@ -1696,5 +1784,7 @@ timer:start(function(timer)
 	timer.times = 0
 	triggerRoundEnd = true
 end, 2000, 0)
+
+timer:start(saveAll, 30000, 0)
 
 tfm.exec.newGame(table_random(module.maps))
