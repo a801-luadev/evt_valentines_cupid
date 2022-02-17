@@ -991,7 +991,7 @@ local selectCupids
 do
 	local selectRandomWithWeight
 	selectRandomWithWeight = function(weights, total)
-		local result, sum = math_random(total), 0
+		local result, sum = math_random(0, total - 1), 0
 
 		for k, v in next, weights do
 			sum = sum + v
@@ -1007,25 +1007,26 @@ do
 		local rewards = playerData:get(playerName, "rewards")
 
 		if band(module.reward.badge[2], rewards) > 0 then -- Already has the badge
-			return 1200
+			return 1000
 		elseif band(module.reward.title.willbriemine[2]
 			+ module.reward.title.heartbreaker[2], rewards) > 0 then -- Has both titles
 
 			local totalLinkedMice = playerData:get(playerName, "linkedMice")
 			if totalLinkedMice >= module.totalLinkedSoulsForReward * 0.8 then -- miss .2 to complete
-				return 7500
+				return 9000
 			end
-			return 5500
+			return 6000
 		elseif band(module.reward.title.willbriemine[2], rewards) > 0
 			or band(module.reward.title.heartbreaker[2], rewards) > 0 then -- Has only one title
-			return 2800
+			return 2600
 		else -- Doesn't have any title
-			return 2150
+			return 1600
 		end
 	end
 
 	selectCupids = function(totalCupids)
 		local cachedPlayers = table_keys(playerCache)
+		table_shuffle(cachedPlayers)
 
 		local players, playerWeights = { }, { }
 
