@@ -1018,7 +1018,7 @@ do
 			return 6000
 		elseif band(module.reward.title.willbriemine[2], rewards) > 0
 			or band(module.reward.title.heartbreaker[2], rewards) > 0 then -- Has only one title
-			return 2600
+			return 2200
 		else -- Doesn't have any title
 			return 1600
 		end
@@ -1188,8 +1188,8 @@ do
 			-- Can't collect more than one
 
 			-- Reposition the bonus
-			timer:start(tfm.exec.addBonus, 3000, 1, images.collectibles[self.__index], bonusPos.x,
-				bonusPos.y, id, 0, false, playerName)
+			timer:start(tfm.exec.addBonus, 3000, 1, 0, bonusPos.x, bonusPos.y, id, 0, false,
+				playerName)
 
 			return
 		end
